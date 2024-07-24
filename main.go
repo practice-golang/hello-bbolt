@@ -91,16 +91,4 @@ func main() {
 	}
 
 	startServer()
-
-	// // 검색
-	// SearchPeople(db, "Alice")
-	// SearchPeople(db, "Male")
-
-	// startDate := time.Now()
-	// endDate := startDate.AddDate(0, 0, 5)
-
-	// // 기간 검색
-	// SearchPeopleByDate(db, startDate, endDate)
-
-	// SearchPeopleByAge(db, 29, 41)
 }
