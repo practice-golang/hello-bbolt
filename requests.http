@@ -13,27 +13,39 @@ POST {{uri}}/person HTTP/1.1
 Content-Type: application/json
 
 {
-    "name": "존박",
-    "age": 42,
-    "gender": "Male"
+    "name": "존박사",
+    "age": 35,
+    "gender": "Male",
+    "birth": "1988-09-13"
 }
 
-### delete category
+### delete person
 DELETE {{uri}}/person?id=2 HTTP/1.1
 
-### update pay account
+### update person
 PUT {{uri}}/person?id=3 HTTP/1.1
 Content-Type: application/json
 
 {
     "id": 4,
-    "name": "Brown",
-    "age": 37,
-    "gender": "Male"
+    "name": "Light",
+    "age": 70,
+    "gender": "Male",
+    "birth": "1942-08-15"
 }
 
 ### get person
+# GET {{uri}}/persons?name=존&gender=Male&from=1990-01-01&to=2000-12-31&limit=10
 GET {{uri}}/person HTTP/1.1
+
+### get person
+GET {{uri}}/person?name=alic HTTP/1.1
+
+### get person
+GET {{uri}}/person?gender=male HTTP/1.1
+
+### get person
+GET {{uri}}/person?from=1997-01-01 HTTP/1.1
 
 
 

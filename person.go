@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
 	"time"
 
@@ -11,49 +10,16 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-// getNextID는 자동 증분 ID를 가져오거나 생성합니다.
-func getNextID(db *EncryptedDB) (int, error) {
-	var nextID int
-
-	err := db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(bucketPeopleID))
-		if err != nil {
-			return err
-		}
-
-		// 마지막 ID를 취득
-		lastID := b.Get([]byte("lastID"))
-		if lastID == nil {
-			nextID = 1 // 시작 ID를 1로 설정
-		} else {
-			// 마지막 ID 정수 변환하고 +1
-			lastIDInt, err := strconv.Atoi(string(lastID))
-			if err != nil {
-				return err
-			}
-			nextID = lastIDInt + 1
-		}
-
-		return b.Put([]byte("lastID"), []byte(strconv.Itoa(nextID))) // 다음 ID를 버킷에 저장
-	})
-
-	if err != nil {
-		return -1, err
-	}
-
-	return nextID, nil
-}
-
 func AddPerson(p Person) error {
-	// 자동 증분 ID 생성
-	id, err := getNextID(db)
+	id, err := getNextID(db) // ID 생성
 	if err != nil {
 		return err
 	}
+
 	p.ID = id
 	p.RegDTTM = time.Now().Format("20060102150405")
 
-	// 데이터베이스에 추가
+	// db에 추가
 	err = db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(bucketPeople))
 		if err != nil {
@@ -159,119 +125,105 @@ func UpdatePerson(id int, updatedPerson Person) error {
 	})
 }
 
-func GetAllPersons() ([]Person, error) {
-	var persons []Person
-
-	err := db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketPeople))
-		if b == nil {
-			return fmt.Errorf("bucket not found")
-		}
-
-		return b.ForEach(func(k, v []byte) error {
-			var person Person
-			decryptedValue, err := decryptPage(v, encryptionKey)
-			if err != nil {
-				return err
-			}
-			err = json.Unmarshal(decryptedValue, &person)
-			if err != nil {
-				return err
-			}
-			persons = append(persons, person)
-			return nil
-		})
-	})
-
-	return persons, err
-}
-
-func GetPerson(id string) (Person, error) {
+func GetPerson(id int) (Person, error) {
 	var person Person
+
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketPeople))
 		if b == nil {
 			return fmt.Errorf("bucket not found")
 		}
-		encryptedValue := b.Get([]byte(id))
+
+		idBytes := itob(id)
+		encryptedValue := b.Get(idBytes)
 		if encryptedValue == nil {
 			return fmt.Errorf("person not found")
 		}
+
 		decryptedValue, err := decryptPage(encryptedValue, encryptionKey)
 		if err != nil {
 			return err
 		}
+
 		return json.Unmarshal(decryptedValue, &person)
 	})
+
 	return person, err
 }
 
-func SearchPeople(query string) {
-	searchRequest := bleve.NewSearchRequest(bleve.NewQueryStringQuery(query))
-	searchResult, err := index.Search(searchRequest)
-	if err != nil {
-		log.Printf("Error searching: %v", err)
-		return
+func GetPersonList(search PersonSearch, limit int) ([]Person, error) {
+	var err error
+
+	que := bleve.NewBooleanQuery()
+
+	// 이름: 일부 일치
+	if search.Name != "" {
+		nameQuery := bleve.NewWildcardQuery("*" + search.Name + "*")
+		nameQuery.SetField("name")
+		que.AddMust(nameQuery)
 	}
 
-	fmt.Printf("Found %d matches for query '%s':\n", searchResult.Total, query)
-	for _, hit := range searchResult.Hits {
-		person, err := GetPerson(hit.ID)
-		if err != nil {
-			log.Printf("Error getting person: %v", err)
-			continue
-		}
-		fmt.Printf("- %s (Age: %d, Gender: %s)\n", person.Name, person.Age, person.Gender)
-	}
-}
-
-func SearchPeopleByDate(startDate, endDate time.Time) {
-	query := bleve.NewDateRangeQuery(startDate, endDate)
-	searchRequest := bleve.NewSearchRequest(query)
-	searchResult, err := index.Search(searchRequest)
-	if err != nil {
-		log.Printf("Error searching: %v", err)
-		return
+	// 성별: 전부 일치
+	if search.Gender != "" {
+		genderQuery := bleve.NewMatchQuery(search.Gender)
+		genderQuery.SetField("gender")
+		que.AddMust(genderQuery)
 	}
 
-	fmt.Printf("Found %d matches for date range %v to %v:\n", searchResult.Total, startDate, endDate)
-	for _, hit := range searchResult.Hits {
-		person, err := GetPerson(hit.ID)
-		if err != nil {
-			log.Printf("Error getting person: %v", err)
-			continue
+	// from, to: 범위
+	if search.From != "" || search.To != "" {
+		var fromTime, toTime time.Time
+
+		if search.From != "" {
+			fromTime, err = time.Parse("2006-01-02", search.From)
+			if err != nil {
+				return nil, fmt.Errorf("invalid From date format: %v", err)
+			}
 		}
 
-		regdttm, _ := time.Parse("20060102150405", person.RegDTTM)
-
-		fmt.Printf("- ID: %d, Name: %s, Age: %d, Gender: %s, RegDTTM: %s\n",
-			person.ID, person.Name, person.Age, person.Gender, regdttm.Format("2006-01-02 15:04:05"))
-	}
-}
-func SearchPeopleByAge(startAge, endAge int) {
-	var startAgeF float64 = float64(startAge)
-	var endAgeF float64 = float64(endAge)
-
-	query := bleve.NewNumericRangeQuery(&startAgeF, &endAgeF)
-	query.SetField("Age")
-	searchRequest := bleve.NewSearchRequest(query)
-	searchResult, err := index.Search(searchRequest)
-	if err != nil {
-		log.Printf("Error searching: %v", err)
-		return
-	}
-
-	fmt.Printf("Found %d matches for age range %d to %d:\n", searchResult.Total, startAge, endAge)
-	for _, hit := range searchResult.Hits {
-		person, err := GetPerson(hit.ID)
-		if err != nil {
-			log.Printf("Error getting person: %v", err)
-			continue
+		if search.To != "" {
+			toTime, err = time.Parse("2006-01-02", search.To)
+			if err != nil {
+				return nil, fmt.Errorf("invalid To date format: %v", err)
+			}
+			toTime = toTime.Add(24*time.Hour - time.Second) // To 시간 - 23:59:59
 		}
 
-		regdttm, _ := time.Parse("20060102150405", person.RegDTTM)
-
-		fmt.Printf("- ID: %d, Name: %s, Age: %d, Gender: %s, RegDTTM: %s\n",
-			person.ID, person.Name, person.Age, person.Gender, regdttm.Format("2006-01-02 15:04:05"))
+		dateQuery := bleve.NewDateRangeQuery(fromTime, toTime)
+		dateQuery.SetField("birth")
+		que.AddMust(dateQuery)
 	}
+
+	// Boolean 쿼리는 최소 1개 이상 조건 필요
+	if que.Validate() != nil {
+		wildcardQuery := bleve.NewWildcardQuery("*")
+		que.AddMust(wildcardQuery)
+	}
+
+	// 검색 요청 생성
+	searchRequest := bleve.NewSearchRequest(que)
+	searchRequest.Size = limit
+	searchRequest.SortBy([]string{"regdttm", "time", "_score"}) // SORT ASC
+	// searchRequest.SortBy([]string{"birth", "time", "_score"}) // SORT ASC
+	// searchRequest.SortBy([]string{"-birth", "-_score"})         // SORT DESC
+
+	// 검색 실행
+	searchResults, err := index.Search(searchRequest)
+	if err != nil {
+		return nil, fmt.Errorf("search error: %v", err)
+	}
+
+	// 결과 처리
+	var persons []Person
+	for _, hit := range searchResults.Hits {
+		id, _ := strconv.ParseInt(hit.ID, 10, 64)
+		person, err := GetPerson(int(id))
+		if err != nil {
+			return nil, err
+		}
+
+		persons = append(persons, person)
+	}
+
+	return persons, nil
 }

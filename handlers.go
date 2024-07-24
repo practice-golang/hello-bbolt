@@ -129,7 +129,7 @@ func updatePersonHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getPersonListHandler(w http.ResponseWriter, r *http.Request) {
-	result := map[string]string{"status": "fail", "message": ""}
+	result := map[string]interface{}{"status": "fail", "message": ""}
 
 	if db == nil {
 		result["message"] = "Enter password first"
@@ -137,20 +137,33 @@ func getPersonListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	persons, err := GetAllPersons()
-	if err != nil {
-		if strings.Contains(err.Error(), "bucket not found") {
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode([]Person{})
-			return
-		}
+	query := r.URL.Query()
+	search := PersonSearch{
+		Name:   query.Get("name"),
+		Gender: query.Get("gender"),
+		From:   query.Get("from"),
+		To:     query.Get("to"),
+	}
 
-		http.Error(w, "Failed to get persons", http.StatusInternalServerError)
+	limit := 300 // 목록 limit 기본값 = 300
+	limitStr := query.Get("limit")
+	if limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	persons, err := GetPersonList(search, limit)
+	if err != nil {
+		result["message"] = "Failed to get persons: " + err.Error()
+		ResponseJSON(w, http.StatusInternalServerError, result)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(persons)
+	result["status"] = "success"
+	result["persons"] = persons
+	ResponseJSON(w, http.StatusOK, result)
 }
 
 func setTextFileHandler(w http.ResponseWriter, r *http.Request) {
