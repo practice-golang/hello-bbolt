@@ -1,0 +1,44 @@
+@uri = http://localhost:12480
+
+
+### health
+GET {{uri}}/health HTTP/1.1
+
+### data init
+GET {{uri}}/init-data HTTP/1.1
+
+
+### add person
+POST {{uri}}/person HTTP/1.1
+Content-Type: application/json
+
+{
+    "name": "존박",
+    "age": 42,
+    "gender": "Male"
+}
+
+### delete category
+DELETE {{uri}}/person?id=2 HTTP/1.1
+
+### update pay account
+PUT {{uri}}/person?id=3 HTTP/1.1
+Content-Type: application/json
+
+{
+    "id": 4,
+    "name": "Brown",
+    "age": 37,
+    "gender": "Male"
+}
+
+### get person
+GET {{uri}}/person HTTP/1.1
+
+
+
+### write text file
+POST {{uri}}/txt-file HTTP/1.1
+
+### read text file
+GET {{uri}}/txt-file HTTP/1.1
