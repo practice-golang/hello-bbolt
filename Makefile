@@ -4,11 +4,10 @@ default: build
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
-fname := server
+fname := app
 fext :=
 # ifeq ($(GOOS),Windows_NT)
 ifeq ($(GOOS),windows)
-	fname := server
 	fext := .exe
 endif
 
