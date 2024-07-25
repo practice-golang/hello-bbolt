@@ -143,6 +143,7 @@ func getPersonListHandler(w http.ResponseWriter, r *http.Request) {
 		Gender: query.Get("gender"),
 		From:   query.Get("from"),
 		To:     query.Get("to"),
+		Sort:   query.Get("sort"),
 	}
 
 	limit := 300 // 목록 limit 기본값 = 300

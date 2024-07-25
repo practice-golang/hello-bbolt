@@ -171,7 +171,7 @@ func GetPersonList(search PersonSearch, limit int) ([]Person, error) {
 	}
 
 	// from, to: 범위
-	if search.From != "" || search.To != "" {
+	if search.From != "" && search.To != "" {
 		var fromTime, toTime time.Time
 
 		if search.From != "" {
@@ -203,9 +203,12 @@ func GetPersonList(search PersonSearch, limit int) ([]Person, error) {
 	// 검색 요청 생성
 	searchRequest := bleve.NewSearchRequest(que)
 	searchRequest.Size = limit
-	searchRequest.SortBy([]string{"regdttm", "time", "_score"}) // SORT ASC
-	// searchRequest.SortBy([]string{"birth", "time", "_score"}) // SORT ASC
-	// searchRequest.SortBy([]string{"-birth", "-_score"})         // SORT DESC
+
+	if search.Sort == "DESC" {
+		searchRequest.SortBy([]string{"-birth", "_score"}) // SORT DESC
+	} else {
+		searchRequest.SortBy([]string{"birth", "time", "_score"}) // SORT ASC
+	}
 
 	// 검색 실행
 	searchResults, err := index.Search(searchRequest)

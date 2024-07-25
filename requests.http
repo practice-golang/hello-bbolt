@@ -42,10 +42,10 @@ GET {{uri}}/person HTTP/1.1
 GET {{uri}}/person?name=alic HTTP/1.1
 
 ### get person
-GET {{uri}}/person?gender=male HTTP/1.1
+GET {{uri}}/person?gender=male&sort=DESC HTTP/1.1
 
 ### get person
-GET {{uri}}/person?from=1997-01-01 HTTP/1.1
+GET {{uri}}/person?from=1990-01-01&to=1999-01-01&sort=DESC HTTP/1.1
 
 
 

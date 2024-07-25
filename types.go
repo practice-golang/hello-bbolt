@@ -22,4 +22,5 @@ type PersonSearch struct {
 	Gender string `json:"gender,omitempty"` // 성별 검색 (정확 일치)
 	From   string `json:"from,omitempty"`   // 생일 범위 시작
 	To     string `json:"to,omitempty"`     // 생일 범위 끝
+	Sort   string `json:"sort,omitempty"`   // 정렬
 }
