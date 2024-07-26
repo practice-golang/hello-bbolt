@@ -6,6 +6,8 @@ import (
 	"go.etcd.io/bbolt"
 )
 
+var xchacha *Xchacha
+
 func setupInitialData(db *bbolt.DB) {
 	persons := []Person{
 		{Name: "Alice", Gender: "Female", Birth: "1990-01-01", RegDTTM: "20230725083000"},
@@ -76,7 +78,11 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	setupXchacha()
+
+	xchacha, err = SetupXchacha()
+	if err != nil {
+		panic(err.Error())
+	}
 
 	setupInitialData(db)
 

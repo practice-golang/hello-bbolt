@@ -148,7 +148,7 @@ func addPerson(db *bbolt.DB, p Person) error {
 		}
 
 		decName := p.Name
-		encName, err := encrypt(strings.TrimSpace(decName))
+		encName, err := xchacha.Encrypt(strings.TrimSpace(decName))
 		if err != nil {
 			return fmt.Errorf("failed to encrypt")
 		}
@@ -209,7 +209,7 @@ func updatePerson(db *bbolt.DB, id int, newPerson Person) error {
 			return err
 		}
 
-		encName, err := encrypt(newPerson.Name)
+		encName, err := xchacha.Encrypt(newPerson.Name)
 		if err != nil {
 			return err
 		}
@@ -291,7 +291,7 @@ func deletePerson(db *bbolt.DB, id int) error {
 		if err := json.Unmarshal(personData, &p); err != nil {
 			return err
 		}
-		name, err := encrypt(strings.TrimSpace(p.Name))
+		name, err := xchacha.Encrypt(strings.TrimSpace(p.Name))
 		if err != nil {
 			return fmt.Errorf("failed to encrypt")
 		}
@@ -317,7 +317,7 @@ func searchByName(name string, db *bbolt.DB) (Person, error) {
 	var err error
 	var result Person
 
-	encName, err := encrypt(name)
+	encName, err := xchacha.Encrypt(name)
 	if err != nil {
 		return Person{}, fmt.Errorf("failed to encrypt")
 	}
@@ -349,7 +349,7 @@ func searchByName(name string, db *bbolt.DB) (Person, error) {
 			return err
 		}
 
-		result.Name, err = decrypt([]byte(result.Name))
+		result.Name, err = xchacha.Decrypt([]byte(result.Name))
 		if err != nil {
 			return err
 		}
@@ -396,7 +396,7 @@ func SearchByBirthRange(startDateStr, endDateStr string, db *bbolt.DB) ([]Person
 					continue
 				}
 
-				decName, err := decrypt([]byte(p.Name))
+				decName, err := xchacha.Decrypt([]byte(p.Name))
 				if err != nil {
 					return err
 				}

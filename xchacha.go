@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/gob"
 	"encoding/hex"
 	"errors"
@@ -14,19 +15,25 @@ import (
 )
 
 type Xchacha struct {
-	Key     []byte `json:"key"`
-	Nonce   []byte `json:"nonce"`
-	Padding []byte `json:"padding"`
-	Aead    cipher.AEAD
+	Key            []byte `json:"key"`
+	Nonce          []byte `json:"nonce"`
+	AdditionalData []byte `json:"additional-data"`
+	Aead           cipher.AEAD
+}
+
+type Encryptor interface {
+	Encrypt(data string) (string, error)
+	Decrypt(cipherText []byte) (string, error)
 }
 
 var (
-	xchacha     Xchacha
-	paddingData = []byte("padding data")
+	passphrase     = string("my passsphrase")
+	additionalData = []byte("padding data")
 )
 
-func setupXchacha() error {
+func SetupXchacha() (*Xchacha, error) {
 	var err error
+	var result Xchacha
 
 	switch {
 	case KeyExists("xchacha", []byte("data")):
@@ -41,7 +48,7 @@ func setupXchacha() error {
 				return nil
 			}
 
-			xchacha, err = Deserialize(keyData)
+			result, err = deserialize(keyData)
 			if err != nil {
 				return fmt.Errorf("failed to deserialize: %v", err)
 			}
@@ -49,24 +56,30 @@ func setupXchacha() error {
 			return nil
 		})
 
+		enteredKey := generateKeyFromString(passphrase)
+		if !bytes.Equal(enteredKey, result.Key) {
+			result = Xchacha{}
+			return nil, errors.New("wrong passphrase")
+		}
+
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 	default:
-		xchacha.Key = make([]byte, chacha20poly1305.KeySize)
-		if _, err := rand.Read(xchacha.Key); err != nil {
-			return fmt.Errorf("failed to generate key: %v", err)
+		// result.Key = make([]byte, chacha20poly1305.KeySize)
+		// if _, err := rand.Read(result.Key); err != nil {
+		// 	return nil, fmt.Errorf("failed to generate key: %v", err)
+		// }
+		result.Key = generateKeyFromString(passphrase)
+		result.Nonce = make([]byte, chacha20poly1305.NonceSizeX)
+		if _, err := rand.Read(result.Nonce); err != nil {
+			return nil, fmt.Errorf("failed to generate nonce: %v", err)
 		}
 
-		xchacha.Nonce = make([]byte, chacha20poly1305.NonceSizeX)
-		if _, err := rand.Read(xchacha.Nonce); err != nil {
-			return fmt.Errorf("failed to generate nonce: %v", err)
-		}
-
-		xchachaBIN, err := Serialize(xchacha)
+		xchachaBIN, err := serialize(result)
 		if err != nil {
-			return fmt.Errorf("failed to serialize: %v", err)
+			return nil, fmt.Errorf("failed to serialize: %v", err)
 		}
 
 		err = db.Update(func(tx *bbolt.Tx) error {
@@ -79,35 +92,40 @@ func setupXchacha() error {
 		})
 
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	xchacha.Aead, err = chacha20poly1305.NewX(xchacha.Key)
+	result.Aead, err = chacha20poly1305.NewX(result.Key)
 	if err != nil {
-		return fmt.Errorf("failed to generate aead: %v", err)
+		return nil, fmt.Errorf("failed to generate aead: %v", err)
 	}
 
-	xchacha.Padding = paddingData
+	result.AdditionalData = additionalData
 
-	return nil
+	return &result, nil
 }
 
-func encrypt(data string) (string, error) {
+func generateKeyFromString(input string) []byte {
+	hash := sha256.Sum256([]byte(input))
+	return hash[:]
+}
+
+func (x *Xchacha) Encrypt(data string) (string, error) {
 	var err error
 
 	plaintext := []byte(data)
 
-	cipherBytes := xchacha.Aead.Seal(nil, xchacha.Nonce, plaintext, xchacha.Padding)
+	cipherBytes := x.Aead.Seal(nil, x.Nonce, plaintext, x.AdditionalData)
 	cipherText := hex.EncodeToString(cipherBytes)
 
 	return cipherText, err
 }
 
-func decrypt(cipherText []byte) (string, error) {
+func (x *Xchacha) Decrypt(cipherText []byte) (string, error) {
 	var err error
 
-	if len(cipherText) < xchacha.Aead.NonceSize() {
+	if len(cipherText) < x.Aead.NonceSize() {
 		return "", errors.New("too short data")
 	}
 
@@ -115,7 +133,7 @@ func decrypt(cipherText []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed string to bytes: %v", err)
 	}
-	decrypted, err := xchacha.Aead.Open(nil, xchacha.Nonce, cipherBytes, xchacha.Padding)
+	decrypted, err := x.Aead.Open(nil, x.Nonce, cipherBytes, x.AdditionalData)
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt: %v", err)
 	}
@@ -123,7 +141,7 @@ func decrypt(cipherText []byte) (string, error) {
 	return string(decrypted), nil
 }
 
-func Serialize(data Xchacha) ([]byte, error) {
+func serialize(data Xchacha) ([]byte, error) {
 	var buffer bytes.Buffer
 	encoder := gob.NewEncoder(&buffer)
 	err := encoder.Encode(data)
@@ -135,7 +153,7 @@ func Serialize(data Xchacha) ([]byte, error) {
 	return result, nil
 }
 
-func Deserialize(data []byte) (Xchacha, error) {
+func deserialize(data []byte) (Xchacha, error) {
 	var result Xchacha
 
 	decodedData, err := hex.DecodeString(string(data))
